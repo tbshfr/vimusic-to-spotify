@@ -18,8 +18,8 @@ conn = sqlite3.connect(db_file)
 # Create a cursor object using the cursor() method
 cursor = conn.cursor()
 
-# SQL query to fetch the required data
-query = """
+# SQL query to fetch the required data for playlists
+query_playlists = """
 SELECT p.name AS playlist_name, s.title AS song_title, a.name AS artist_name, spm.position
 FROM Playlist p
 JOIN SongPlaylistMap spm ON p.id = spm.playlistId
@@ -29,17 +29,64 @@ LEFT JOIN Artist a ON sam.artistId = a.id
 ORDER BY p.name, spm.position
 """
 
-# Execute the SQL query
-cursor.execute(query)
+# SQL query to fetch the required data for favorites
+query_favorites = """
+SELECT 'Favs from ViMusic' AS playlist_name, s.title AS song_title, a.name AS artist_name, s.likedAt AS position
+FROM Song s
+LEFT JOIN SongArtistMap sam ON s.id = sam.songId
+LEFT JOIN Artist a ON sam.artistId = a.id
+WHERE s.likedAt IS NOT NULL
+ORDER BY s.likedAt DESC
+"""
 
-# Fetch all results
-results = cursor.fetchall()
+# Execute the SQL query for favorites
+cursor.execute(query_favorites)
+
+# Fetch all results for favorites
+results_favorites = cursor.fetchall()
+
+# Dictionary to hold favorite songs and artist names
+favorites_songs = {}
+
+# Process the favorites results
+for _, song_title, artist_name, position in results_favorites:
+    # Initialize the song in the dictionary if it does not exist
+    if song_title not in favorites_songs:
+        favorites_songs[song_title] = {
+            'artists': set(),  # Use a set to avoid duplicates
+            'position': position
+        }
+
+    # Add the artist name to the set of artists for this song
+    if artist_name:
+        favorites_songs[song_title]['artists'].add(artist_name)
+
+# Folder to save playlist files
+output_folder = "playlists"
+os.makedirs(output_folder, exist_ok=True)
+
+# Write the favorites to their file immediately to maintain order
+favorites_file_path = os.path.join(output_folder, "Favs from ViMusic.txt")
+
+# Sort and write the favorites to their file
+with open(favorites_file_path, 'w', encoding='utf-8') as file:
+    sorted_favorites = sorted(favorites_songs.items(), key=lambda x: x[1]['position'], reverse=True)
+    for song_title, details in sorted_favorites:
+        artist_names = ', '.join(details['artists'])
+        song_entry = f"{artist_names} - {song_title}" if artist_names else song_title
+        file.write(song_entry + '\n')
+
+# Execute the SQL query for playlists
+cursor.execute(query_playlists)
+
+# Fetch all results for playlists
+results_playlists = cursor.fetchall()
 
 # Dictionary to hold playlist songs and artist names
 playlist_songs = {}
 
-# Process the results
-for playlist_name, song_title, artist_name, position in results:
+# Process the playlist results
+for playlist_name, song_title, artist_name, position in results_playlists:
     # Initialize the playlist in the dictionary if it does not exist
     if playlist_name not in playlist_songs:
         playlist_songs[playlist_name] = {}
@@ -55,11 +102,7 @@ for playlist_name, song_title, artist_name, position in results:
     if artist_name:
         playlist_songs[playlist_name][song_title]['artists'].add(artist_name)
 
-# Folder to save playlist files
-output_folder = "playlists"
-os.makedirs(output_folder, exist_ok=True)
-
-# Write to text files within the "playlists" folder
+# Write to text files within the "playlists" folder for other playlists
 for playlist_name, songs in playlist_songs.items():
     # Replace any characters that are invalid in file names
     valid_file_name = "".join(x for x in playlist_name if x.isalnum() or x in " -_").rstrip()
@@ -71,7 +114,6 @@ for playlist_name, songs in playlist_songs.items():
 
     # Create a file for each playlist
     with open(file_path, 'w', encoding='utf-8') as file:
-        # Write each song entry to the file
         for song_title, details in sorted_songs:
             artist_names = ', '.join(details['artists'])
             song_entry = f"{artist_names} - {song_title}" if artist_names else song_title
