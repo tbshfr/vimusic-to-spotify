@@ -2,6 +2,10 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 import os
+import subprocess
+
+# Execute dump_playlist_to_txt.py to get songs from ViMusic
+subprocess.run(['python', 'dump_playlist_to_txt.py'])
 
 # Load environment variables
 load_dotenv()
@@ -10,7 +14,7 @@ load_dotenv()
 client_id = os.getenv('SPOTIPY_CLIENT_ID')
 client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
 redirect_uri = os.getenv('SPOTIPY_REDIRECT_URI')
-username = os.getenv('USERNAME')
+username = os.getenv('SPOTIFY_USERNAME')
 playlist_public = os.getenv('PLAYLIST_PUBLIC') == 'True'
 playlist_collaborative = os.getenv('PLAYLIST_COLLABORATIVE') == 'True'
 
