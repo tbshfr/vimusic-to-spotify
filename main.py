@@ -39,9 +39,13 @@ def search_track(artist_song_str):
     track_uri = results['tracks']['items'][0]['uri'] if results['tracks']['items'] else None
     return track_uri
 
-# Function to add to playlist
+# Function to add to playlist in chunks
 def add_tracks_to_playlist(playlist_id, track_uris):
-    spotify.playlist_add_items(playlist_id, track_uris)
+    # Spotify's API allows adding a maximum of 100 tracks per request, use 99 to be safe
+    max_tracks_per_request = 99
+    for i in range(0, len(track_uris), max_tracks_per_request):
+        batch = track_uris[i:i + max_tracks_per_request]
+        spotify.playlist_add_items(playlist_id, batch)
 
 # Function to read files and search for track URIs
 def process_playlist_file(file_path, playlist_id):
