@@ -1,8 +1,19 @@
 import sqlite3
 import os
 
+# Get a list of all files in the current directory
+files = os.listdir('.')
+
+# Look for the file that starts with 'vimusic_' and ends with '.db'
+for file in files:
+    if file.startswith('vimusic_') and file.endswith('.db'):
+        db_file = file
+        break
+else:
+    raise FileNotFoundError("No database file found starting with 'vimusic_' and ending with '.db'")
+
 # Establish a connection to the SQLite database
-conn = sqlite3.connect('vimusic.db')
+conn = sqlite3.connect(db_file)
 
 # Create a cursor object using the cursor() method
 cursor = conn.cursor()
