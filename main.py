@@ -140,10 +140,18 @@ def process_playlist_file(file_path, playlist_id):
         add_tracks_to_playlist(playlist_id, track_uris)
     
     # Write not imported songs to a file
+    not_imported_count = len(not_imported_songs)
     if not_imported_songs:
         with open('not_imported_songs.txt', 'a') as error_file:
             for song in not_imported_songs:
                 error_file.write(f"{song}\n")
+
+    # Print summary after processing each file
+    print(f"\nFinished processing {file_path}.")
+    print(f"Imported {len(track_uris)} songs.")
+    print(f"Did not import {not_imported_count} songs.")
+    if not_imported_count > 0:
+        print("Details of songs not imported can be found in 'not_imported_songs.txt'.")
 
 # Loop over your text files in the 'playlists' folder and create playlists accordingly
 for filename in os.listdir('playlists'):
@@ -152,4 +160,3 @@ for filename in os.listdir('playlists'):
         playlist_id = create_playlist(playlist_name, playlist_public, playlist_collaborative)
         file_path = os.path.join('playlists', filename)
         process_playlist_file(file_path, playlist_id)
-        print(f"Finished processing {file_path}.")
