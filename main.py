@@ -80,11 +80,19 @@ def search_track(artist_song_album_str):
         query += f" - {album}"  # Just append the album for the search query
 
     results = spotify.search(q=query, type='track', limit=10)
+    best_match = None
+    best_match_percentage = 0
+    best_match_uri = None
+
     for track in results['tracks']['items']:
-        if verify_track(artist_song_album_str, track):  # This will be True if the track matches
-            return track['uri']
+        match_ratio = verify_track(artist_song_album_str, track)
+        if match_ratio > best_match_percentage:
+            best_match_percentage = match_ratio
+            best_match = f"{track['artists'][0]['name']} - {track['name']}"
+            if match_ratio >= match_percentage:
+                best_match_uri = track['uri']
     
-    return None
+    return best_match_uri, best_match, best_match_percentage
 
 # Function to add to playlist in chunks
 def add_tracks_to_playlist(playlist_id, track_uris):
@@ -110,14 +118,19 @@ def process_playlist_file(file_path, playlist_id):
                 # Check if line contains album information
                 if '+' in line:
                     artist_song, album = line.strip().split(' + ')
-                    track_uri = search_track(f"{artist_song} - {album}")
+                    full_query = f"{artist_song} - {album}"
                 else:
-                    track_uri = search_track(line.strip())
+                    artist_song = line.strip()
+                    full_query = artist_song
+                    album = ""
+                
+                track_uri, best_match, best_match_percentage = search_track(full_query)
                 
                 if track_uri:
                     track_uris.append(track_uri)
                 else:
-                    not_imported_songs.append(line.strip())
+                    # Append the best match details to the not_imported_songs list
+                    not_imported_songs.append(f"{full_query} -> {best_match} with match percentage {best_match_percentage:.2f}")
             except Exception as e:
                 print(f"Error processing {line.strip()}: {e}")
                 not_imported_songs.append(f"{line.strip()} - Error: {e}")
