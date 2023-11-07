@@ -10,7 +10,7 @@ dump_result = subprocess.run(['python', 'dump_playlist_to_txt.py'], capture_outp
 
 # Check if the subprocess was successful
 if dump_result.returncode != 0:
-    print(f"Error executing 'dump_playlist_to_txt.py': {result.stderr}")
+    print(f"Error executing 'dump_playlist_to_txt.py': {dump_result.stderr}")
     exit(1) 
 else:
     print("Database dumped successfully to txt files.")
@@ -25,7 +25,7 @@ redirect_uri = os.getenv('SPOTIPY_REDIRECT_URI')
 username = os.getenv('SPOTIFY_USERNAME')
 playlist_public = os.getenv('PLAYLIST_PUBLIC') == 'True'
 playlist_collaborative = os.getenv('PLAYLIST_COLLABORATIVE') == 'True'
-match_percentage = os.getenv('MATCH_VALUE')
+match_percentage = float(os.getenv('MATCH_VALUE'))
 
 # Set up Spotipy with user credentials
 token = SpotifyOAuth(client_id=client_id,
@@ -45,20 +45,29 @@ def similar(a, b):
 
 def verify_track(query, track):
     query_parts = query.lower().split(" - ")
-    query_words = set(query_parts[0].split())  # Always include artist and song
-    track_words = set(f"{track['artists'][0]['name']} {track['name']}".lower().split())
+    query_artist_names = {name.strip() for name in query_parts[0].split(',')}
+    track_artist_names = {artist['name'].lower() for artist in track['artists']}
+    
+    artist_match = not query_artist_names.isdisjoint(track_artist_names)
+    if not artist_match:
+        return False  # No artist match, return False
+
+    query_song = query_parts[1] if len(query_parts) > 1 else ""
+    track_song = track['name'].lower()
 
     # Include the album in the comparison if it's present in the query
     if len(query_parts) > 2 and 'album' in track:
-        query_album = query_parts[2]
-        track_album = track['album']['name']
-        query_words.update(query_album.split())
-        track_words.update(track_album.lower().split())
+        query_album = query_parts[2].lower()
+        track_album = track['album']['name'].lower()
+        # Check album match
+        if query_album and similar(query_album, track_album) < match_percentage:
+            return False  # Album does not match well enough, return False
 
-    # Calculate the ratio of intersection between both sets
-    match_ratio = len(query_words.intersection(track_words)) / len(query_words.union(track_words))
+    # Calculate the similarity between song names
+    if similar(query_song, track_song) < match_percentage:
+        return False  # Song does not match well enough, return False
 
-    return match_ratio
+    return True  # If all checks pass, return True
 
 # Function to search for the Track names on Spotify, including the album if available
 def search_track(artist_song_album_str):
@@ -72,8 +81,7 @@ def search_track(artist_song_album_str):
 
     results = spotify.search(q=query, type='track', limit=10)
     for track in results['tracks']['items']:
-        match_ratio = verify_track(artist_song_album_str, track)
-        if match_ratio > match_percentage:  # adjust threshold in .env file
+        if verify_track(artist_song_album_str, track):  # This will be True if the track matches
             return track['uri']
     
     return None
