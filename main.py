@@ -31,10 +31,21 @@ def create_playlist(name, public, collaborative, description=''):
                                             collaborative=collaborative, description=description)
     return playlist['id']
 
-# Function to search for the Track names on Spotify
-def search_track(artist_song_str):
+# Function to search for the Track names on Spotify, including the album if available
+def search_track(artist_song_album_str):
+    # Split the string by " - " to separate artist and song, and album if present
+    parts = artist_song_album_str.split(" - ")
+    artist_song = parts[0] if len(parts) > 0 else ""
+    album = parts[2] if len(parts) > 2 else ""
+
+    # Format the query based on the available information
+    query = artist_song
+    if album:
+        query += f" album:{album}"
+
     # Search for the track on Spotify
-    results = spotify.search(q=artist_song_str, type='track', limit=1)
+    results = spotify.search(q=query, type='track', limit=1)
+
     # Get the first track's URI if the search returned tracks
     track_uri = results['tracks']['items'][0]['uri'] if results['tracks']['items'] else None
     return track_uri
@@ -53,14 +64,20 @@ def process_playlist_file(file_path, playlist_id):
     not_imported_songs = []
     total_lines = sum(1 for line in open(file_path, 'r'))
     print(f"Processing {total_lines} songs in {file_path}...")
-    
+
     with open(file_path, 'r') as file:
         for line_number, line in enumerate(file, start=1):
             try:
                 # Show progress
                 print(f"Processing song {line_number}/{total_lines}...", end='\r')
+
+                # Check if line contains album information
+                if '+' in line:
+                    artist_song, album = line.strip().split(' + ')
+                    track_uri = search_track(f"{artist_song} - {album}")
+                else:
+                    track_uri = search_track(line.strip())
                 
-                track_uri = search_track(line.strip())
                 if track_uri:
                     track_uris.append(track_uri)
                 else:
@@ -87,4 +104,4 @@ for filename in os.listdir('playlists'):
         file_path = os.path.join('playlists', filename)
         process_playlist_file(file_path, playlist_id)
         print(f"Finished processing {file_path}.")
-
+        
