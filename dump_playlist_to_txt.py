@@ -1,123 +1,85 @@
 import sqlite3
 import os
 
-# Get a list of all files in the current directory
-files = os.listdir('.')
-
-# Look for the file that starts with 'vimusic_' and ends with '.db'
-for file in files:
-    if file.startswith('vimusic_') and file.endswith('.db'):
-        db_file = file
-        break
-else:
-    raise FileNotFoundError("No database file found starting with 'vimusic_' and ending with '.db'")
+def safe_filename(name):
+    return "".join(x for x in name if x.isalnum() or x in " -_").rstrip()
 
 # Establish a connection to the SQLite database
-conn = sqlite3.connect(db_file)
+db_file = next((f for f in os.listdir('.') if f.startswith('vimusic_') and f.endswith('.db')), None)
+if db_file is None:
+    raise FileNotFoundError("No database file found starting with 'vimusic_' and ending with '.db'")
 
-# Create a cursor object using the cursor() method
+conn = sqlite3.connect(db_file)
 cursor = conn.cursor()
 
-# SQL query to fetch the required data for playlists
+# SQL query to fetch the required data for favorites with grouped artists
+query_favorites = """
+SELECT s.title AS song_title, GROUP_CONCAT(a.name, ', ') AS artist_names, 
+       al.title AS album_title, s.likedAt
+FROM Song s
+LEFT JOIN SongArtistMap sam ON s.id = sam.songId
+LEFT JOIN Artist a ON sam.artistId = a.id
+LEFT JOIN SongAlbumMap sal ON s.id = sal.songId
+LEFT JOIN Album al ON sal.albumId = al.id
+WHERE s.likedAt IS NOT NULL
+GROUP BY s.id
+ORDER BY s.likedAt DESC
+"""
+
+# SQL query to fetch the required data for playlists with grouped artists
 query_playlists = """
-SELECT p.name AS playlist_name, s.title AS song_title, a.name AS artist_name, spm.position
+SELECT p.name AS playlist_name, s.title AS song_title, GROUP_CONCAT(a.name, ', ') AS artist_names, 
+       al.title AS album_title, spm.position
 FROM Playlist p
 JOIN SongPlaylistMap spm ON p.id = spm.playlistId
 JOIN Song s ON s.id = spm.songId
 LEFT JOIN SongArtistMap sam ON s.id = sam.songId
 LEFT JOIN Artist a ON sam.artistId = a.id
+LEFT JOIN SongAlbumMap sal ON s.id = sal.songId
+LEFT JOIN Album al ON sal.albumId = al.id
+GROUP BY p.name, s.id
 ORDER BY p.name, spm.position
 """
 
-# SQL query to fetch the required data for favorites
-query_favorites = """
-SELECT 'Favs from ViMusic' AS playlist_name, s.title AS song_title, a.name AS artist_name, s.likedAt AS position
-FROM Song s
-LEFT JOIN SongArtistMap sam ON s.id = sam.songId
-LEFT JOIN Artist a ON sam.artistId = a.id
-WHERE s.likedAt IS NOT NULL
-ORDER BY s.likedAt DESC
-"""
-
-# Execute the SQL query for favorites
+# Execute and process favorites query
 cursor.execute(query_favorites)
-
-# Fetch all results for favorites
 results_favorites = cursor.fetchall()
 
-# Dictionary to hold favorite songs and artist names
-favorites_songs = {}
+# Process and write favorites data
+favorites_file_path = os.path.join("playlists", "Favs from ViMusic.txt")
+os.makedirs("playlists", exist_ok=True)
 
-# Process the favorites results
-for _, song_title, artist_name, position in results_favorites:
-    # Initialize the song in the dictionary if it does not exist
-    if song_title not in favorites_songs:
-        favorites_songs[song_title] = {
-            'artists': set(),  # Use a set to avoid duplicates
-            'position': position
-        }
-
-    # Add the artist name to the set of artists for this song
-    if artist_name:
-        favorites_songs[song_title]['artists'].add(artist_name)
-
-# Folder to save playlist files
-output_folder = "playlists"
-os.makedirs(output_folder, exist_ok=True)
-
-# Write the favorites to their file immediately to maintain order
-favorites_file_path = os.path.join(output_folder, "Favs from ViMusic.txt")
-
-# Sort and write the favorites to their file
 with open(favorites_file_path, 'w', encoding='utf-8') as file:
-    sorted_favorites = sorted(favorites_songs.items(), key=lambda x: x[1]['position'], reverse=True)
-    for song_title, details in sorted_favorites:
-        artist_names = ', '.join(details['artists'])
-        song_entry = f"{artist_names} - {song_title}" if artist_names else song_title
-        file.write(song_entry + '\n')
+    for song_title, artist_names, album_title, liked_at in results_favorites:
+        if album_title not in [None, 'None', ''] and album_title != song_title:  # Exclude album if it has the same name as the song, is empty or has "None" as value
+            file.write(f"{artist_names} - {song_title} + {album_title}\n")
+        else:
+            file.write(f"{artist_names} - {song_title}\n")
 
-# Execute the SQL query for playlists
+# Execute and process playlists query
 cursor.execute(query_playlists)
-
-# Fetch all results for playlists
 results_playlists = cursor.fetchall()
 
-# Dictionary to hold playlist songs and artist names
+# Process and write playlist data
 playlist_songs = {}
+for playlist_name, song_title, artist_names, album_title, position in results_playlists:
+    playlist_name_safe = safe_filename(playlist_name)
+    if playlist_name_safe not in playlist_songs:
+        playlist_songs[playlist_name_safe] = []
 
-# Process the playlist results
-for playlist_name, song_title, artist_name, position in results_playlists:
-    # Initialize the playlist in the dictionary if it does not exist
-    if playlist_name not in playlist_songs:
-        playlist_songs[playlist_name] = {}
+    if album_title not in [None, 'None', ''] and album_title != song_title:  # Exclude album if it has the same name as the song, is empty or has "None" as value
+        entry = f"{artist_names} - {song_title} + {album_title}"
+    else:
+        entry = f"{artist_names} - {song_title}"
+    
+    playlist_songs[playlist_name_safe].append((position, entry))
 
-    # Initialize the song in the playlist if it does not exist
-    if song_title not in playlist_songs[playlist_name]:
-        playlist_songs[playlist_name][song_title] = {
-            'artists': set(),  # Use a set to avoid duplicates
-            'position': position
-        }
-
-    # Add the artist name to the set of artists for this song
-    if artist_name:
-        playlist_songs[playlist_name][song_title]['artists'].add(artist_name)
-
-# Write to text files within the "playlists" folder for other playlists
-for playlist_name, songs in playlist_songs.items():
-    # Replace any characters that are invalid in file names
-    valid_file_name = "".join(x for x in playlist_name if x.isalnum() or x in " -_").rstrip()
-    # Path for the file
-    file_path = os.path.join(output_folder, f"{valid_file_name}.txt")
-
-    # Sort songs by the position before writing to the file
-    sorted_songs = sorted(songs.items(), key=lambda x: x[1]['position'])
-
-    # Create a file for each playlist
-    with open(file_path, 'w', encoding='utf-8') as file:
-        for song_title, details in sorted_songs:
-            artist_names = ', '.join(details['artists'])
-            song_entry = f"{artist_names} - {song_title}" if artist_names else song_title
-            file.write(song_entry + '\n')
+# Write to text files for each playlist
+for playlist_name_safe, songs in playlist_songs.items():
+    playlist_file_path = os.path.join("playlists", f"{playlist_name_safe}.txt")
+    with open(playlist_file_path, 'w', encoding='utf-8') as file:
+        for position, entry in sorted(songs):
+            file.write(entry + '\n')
 
 # Close the cursor and connection
 cursor.close()
