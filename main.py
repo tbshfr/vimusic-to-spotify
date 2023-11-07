@@ -3,9 +3,17 @@ from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 import os
 import subprocess
+from difflib import SequenceMatcher
 
 # Execute dump_playlist_to_txt.py to get songs from ViMusic
-subprocess.run(['python', 'dump_playlist_to_txt.py'])
+dump_result = subprocess.run(['python', 'dump_playlist_to_txt.py'], capture_output=True, text=True)
+
+# Check if the subprocess was successful
+if dump_result.returncode != 0:
+    print(f"Error executing 'dump_playlist_to_txt.py': {result.stderr}")
+    exit(1) 
+else:
+    print("Database dumped successfully to txt files.")
 
 # Load environment variables
 load_dotenv()
@@ -17,6 +25,7 @@ redirect_uri = os.getenv('SPOTIPY_REDIRECT_URI')
 username = os.getenv('SPOTIFY_USERNAME')
 playlist_public = os.getenv('PLAYLIST_PUBLIC') == 'True'
 playlist_collaborative = os.getenv('PLAYLIST_COLLABORATIVE') == 'True'
+match_percentage = os.getenv('MATCH_VALUE')
 
 # Set up Spotipy with user credentials
 token = SpotifyOAuth(client_id=client_id,
@@ -31,24 +40,43 @@ def create_playlist(name, public, collaborative, description=''):
                                             collaborative=collaborative, description=description)
     return playlist['id']
 
+def similar(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+def verify_track(query, track):
+    query_parts = query.lower().split(" - ")
+    query_words = set(query_parts[0].split())  # Always include artist and song
+    track_words = set(f"{track['artists'][0]['name']} {track['name']}".lower().split())
+
+    # Include the album in the comparison if it's present in the query
+    if len(query_parts) > 2 and 'album' in track:
+        query_album = query_parts[2]
+        track_album = track['album']['name']
+        query_words.update(query_album.split())
+        track_words.update(track_album.lower().split())
+
+    # Calculate the ratio of intersection between both sets
+    match_ratio = len(query_words.intersection(track_words)) / len(query_words.union(track_words))
+
+    return match_ratio
+
 # Function to search for the Track names on Spotify, including the album if available
 def search_track(artist_song_album_str):
-    # Split the string by " - " to separate artist and song, and album if present
     parts = artist_song_album_str.split(" - ")
     artist_song = parts[0] if len(parts) > 0 else ""
     album = parts[2] if len(parts) > 2 else ""
 
-    # Format the query based on the available information
     query = artist_song
     if album:
-        query += f" album:{album}"
+        query += f" - {album}"  # Just append the album for the search query
 
-    # Search for the track on Spotify
-    results = spotify.search(q=query, type='track', limit=1)
-
-    # Get the first track's URI if the search returned tracks
-    track_uri = results['tracks']['items'][0]['uri'] if results['tracks']['items'] else None
-    return track_uri
+    results = spotify.search(q=query, type='track', limit=10)
+    for track in results['tracks']['items']:
+        match_ratio = verify_track(artist_song_album_str, track)
+        if match_ratio > match_percentage:  # adjust threshold in .env file
+            return track['uri']
+    
+    return None
 
 # Function to add to playlist in chunks
 def add_tracks_to_playlist(playlist_id, track_uris):
@@ -104,4 +132,3 @@ for filename in os.listdir('playlists'):
         file_path = os.path.join('playlists', filename)
         process_playlist_file(file_path, playlist_id)
         print(f"Finished processing {file_path}.")
-        
