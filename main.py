@@ -70,15 +70,26 @@ def verify_track(query, track):
 
     return weighted_match_percentage
 
+def clean_title(title):
+    # List of words/phrases to filter out
+    filters = ['video', 'official video', 'lyrics', 'official audio', 'official', 'audio']
+    
+    # Replace each filter word/phrase with an empty string
+    for f in filters:
+        title = title.replace(f, '')
+    
+    # Return the cleaned title
+    return title.strip()
+
 # Function to search for the Track names on Spotify, including the album if available
 def search_track(artist_song_album_str):
     parts = artist_song_album_str.split(" - ")
-    artist_song = parts[0] if len(parts) > 0 else ""
-    album = parts[2] if len(parts) > 2 else ""
+    artist_song = clean_title(parts[0]) if len(parts) > 0 else ""
+    album = clean_title(parts[2]) if len(parts) > 2 else ""
 
     query = artist_song
     if album:
-        query += f" + {album}"
+        query += f" + {album}" 
 
     results = spotify.search(q=query, type='track', limit=10)
     best_match = None
