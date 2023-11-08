@@ -84,12 +84,20 @@ def clean_title(title):
 # Function to search for the Track names on Spotify, including the album if available
 def search_track(artist_song_album_str):
     parts = artist_song_album_str.split(" - ")
-    artist_song = clean_title(parts[0]) if len(parts) > 0 else ""
+    artist = clean_title(parts[0]) if len(parts) > 0 else ""
+    song = clean_title(parts[1]) if len(parts) > 1 else ""
     album = clean_title(parts[2]) if len(parts) > 2 else ""
 
-    query = artist_song
+    # Use explicit fields for artist and track if both are available
+    if artist and song:
+        query = f"artist:{artist} track:{song}"
+    else:
+        # Fallback to general search query if only one is available
+        query = f"{artist} {song}"
+
+    # Include album in the query if available
     if album:
-        query += f" + {album}" 
+        query += f" album:{album}"
 
     results = spotify.search(q=query, type='track', limit=10)
     best_match = None
