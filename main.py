@@ -50,24 +50,25 @@ def verify_track(query, track):
     
     artist_match = not query_artist_names.isdisjoint(track_artist_names)
     if not artist_match:
-        return False  # No artist match, return False
+        return 0  # No artist match, return 0%
 
     query_song = query_parts[1] if len(query_parts) > 1 else ""
     track_song = track['name'].lower()
 
+    # Calculate the similarity percentage between song names
+    song_match_percentage = similar(query_song, track_song) * 100
+
     # Include the album in the comparison if it's present in the query
+    album_match_percentage = 100  # Default to 100 if no album is specified
     if len(query_parts) > 2 and 'album' in track:
         query_album = query_parts[2].lower()
         track_album = track['album']['name'].lower()
-        # Check album match
-        if query_album and similar(query_album, track_album) < match_percentage:
-            return False  # Album does not match well enough, return False
+        album_match_percentage = similar(query_album, track_album) * 100
 
-    # Calculate the similarity between song names
-    if similar(query_song, track_song) < match_percentage:
-        return False  # Song does not match well enough, return False
+    # Calculate a weighted average where the song name is twice as important as the album
+    weighted_match_percentage = (song_match_percentage * 2 + album_match_percentage) / 3
 
-    return True  # If all checks pass, return True
+    return weighted_match_percentage
 
 # Function to search for the Track names on Spotify, including the album if available
 def search_track(artist_song_album_str):
@@ -77,7 +78,7 @@ def search_track(artist_song_album_str):
 
     query = artist_song
     if album:
-        query += f" - {album}"  # Just append the album for the search query
+        query += f" + {album}"
 
     results = spotify.search(q=query, type='track', limit=10)
     best_match = None
@@ -85,11 +86,11 @@ def search_track(artist_song_album_str):
     best_match_uri = None
 
     for track in results['tracks']['items']:
-        match_ratio = verify_track(artist_song_album_str, track)
-        if match_ratio > best_match_percentage:
-            best_match_percentage = match_ratio
+        current_match_percentage = verify_track(artist_song_album_str, track)
+        if current_match_percentage > best_match_percentage:
+            best_match_percentage = current_match_percentage
             best_match = f"{track['artists'][0]['name']} - {track['name']}"
-            if match_ratio >= match_percentage:
+            if current_match_percentage >= match_percentage * 100:  # Convert threshold to percentage
                 best_match_uri = track['uri']
     
     return best_match_uri, best_match, best_match_percentage
